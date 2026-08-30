@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-macroquad = "0.4"
-image = "0.25"
+image = "0.25.10"
+bevy = "0.14"
+thiserror = "2.0.20"
