@@ -1,6 +1,7 @@
 mod camera;
-mod terrain;
 mod assets;
+mod terrain;
+
 
 use bevy::prelude::*;
 use bevy::asset::AssetPlugin;
@@ -16,7 +17,7 @@ fn main() {
             .set(WindowPlugin {
                 primary_window: Some(Window {
                     title: "Sich Engine".to_string(),
-                    resolution: (1280.0_f32, 720.0_f32).into(),
+                    resolution: (1280, 720).into(),
                     ..default()
                 }),
                 ..default()
@@ -24,5 +25,6 @@ fn main() {
         )
         .add_plugins(CameraPlugin)
         .add_plugins(GscAssetsPlugin)
+        .add_plugins(terrain::TerrainPlugin)
         .run();
 }
