@@ -8,20 +8,21 @@ struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
-    @location(3) blend_indices: vec4<u32>,
-    @location(4) blend_weights: vec4<f32>,
+    @location(3) splat_uv: vec2<f32>,
 }
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) uv: vec2<f32>,
-    @location(1) @interpolate(flat) blend_indices: vec4<u32>,
-    @location(2) blend_weights: vec4<f32>,
+    @location(1) splat_uv: vec2<f32>,
 }
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var atlas_texture: texture_2d<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(1) var atlas_sampler: sampler;
 @group(#{MATERIAL_BIND_GROUP}) @binding(2) var<uniform> atlas_size: vec2<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(3) var splatmap_texture: texture_2d<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(4) var splatmap_sampler: sampler;
+@group(#{MATERIAL_BIND_GROUP}) @binding(5) var<uniform> tile_indices: vec4<u32>;
 
 @vertex
 fn vertex(input: VertexInput) -> VertexOutput {
@@ -34,8 +35,7 @@ fn vertex(input: VertexInput) -> VertexOutput {
 
     output.position = position_world_to_clip(world_position.xyz);
     output.uv = input.uv;
-    output.blend_indices = input.blend_indices;
-    output.blend_weights = input.blend_weights;
+    output.splat_uv = input.splat_uv;
     return output;
 }
 
@@ -50,29 +50,30 @@ fn atlas_uv(tile_index: u32, local_uv: vec2<f32>) -> vec2<f32> {
 
 @fragment
 fn fragment(input: VertexOutput) -> @location(0) vec4<f32> {
+    let weights = textureSample(splatmap_texture, splatmap_sampler, input.splat_uv);
     let color_0 = textureSample(
         atlas_texture,
         atlas_sampler,
-        atlas_uv(input.blend_indices.x, input.uv),
+        atlas_uv(tile_indices.x, input.uv),
     );
     let color_1 = textureSample(
         atlas_texture,
         atlas_sampler,
-        atlas_uv(input.blend_indices.y, input.uv),
+        atlas_uv(tile_indices.y, input.uv),
     );
     let color_2 = textureSample(
         atlas_texture,
         atlas_sampler,
-        atlas_uv(input.blend_indices.z, input.uv),
+        atlas_uv(tile_indices.z, input.uv),
     );
     let color_3 = textureSample(
         atlas_texture,
         atlas_sampler,
-        atlas_uv(input.blend_indices.w, input.uv),
+        atlas_uv(tile_indices.w, input.uv),
     );
 
-    return color_0 * input.blend_weights.x
-        + color_1 * input.blend_weights.y
-        + color_2 * input.blend_weights.z
-        + color_3 * input.blend_weights.w;
+    return color_0 * weights.x
+        + color_1 * weights.y
+        + color_2 * weights.z
+        + color_3 * weights.w;
 }

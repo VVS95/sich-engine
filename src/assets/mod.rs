@@ -1,7 +1,7 @@
-use bevy::prelude::*;
-use bevy::asset::{AssetLoader, LoadContext, io::Reader, AsyncReadExt, ReadAssetBytesError};
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::asset::RenderAssetUsages;
+use bevy::asset::{AssetLoader, AsyncReadExt, LoadContext, ReadAssetBytesError, io::Reader};
+use bevy::prelude::*;
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use thiserror::Error;
 
 pub struct GscAssetsPlugin;
@@ -40,8 +40,7 @@ impl AssetLoader for GscBmpLoader {
         reader: &mut dyn Reader,
         _settings: &(),
         load_context: &mut LoadContext<'_>,
-    ) -> Result<Self::Asset, Self::Error> { 
-        
+    ) -> Result<Self::Asset, Self::Error> {
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).await?;
 
@@ -51,7 +50,11 @@ impl AssetLoader for GscBmpLoader {
         for i in 0..256 {
             let base = i * 3;
             if base + 2 < palette_bytes.len() {
-                palette.push([palette_bytes[base], palette_bytes[base + 1], palette_bytes[base + 2]]);
+                palette.push([
+                    palette_bytes[base],
+                    palette_bytes[base + 1],
+                    palette_bytes[base + 2],
+                ]);
             }
         }
 
@@ -61,7 +64,8 @@ impl AssetLoader for GscBmpLoader {
 
         let data_offset = u32::from_le_bytes([bytes[10], bytes[11], bytes[12], bytes[13]]) as usize;
         let width = i32::from_le_bytes([bytes[18], bytes[19], bytes[20], bytes[21]]) as usize;
-        let height = i32::from_le_bytes([bytes[22], bytes[23], bytes[24], bytes[25]]).abs() as usize;
+        let height =
+            i32::from_le_bytes([bytes[22], bytes[23], bytes[24], bytes[25]]).abs() as usize;
 
         let mut rgba_buf = vec![0u8; width * height * 4];
         let row_stride = (width + 3) & !3;
@@ -76,11 +80,11 @@ impl AssetLoader for GscBmpLoader {
                     let p = &palette[idx as usize];
 
                     let dst_idx = (y * width + x) * 4;
-                    rgba_buf[dst_idx]     = p[0]; // R
+                    rgba_buf[dst_idx] = p[0]; // R
                     rgba_buf[dst_idx + 1] = p[1]; // G
                     rgba_buf[dst_idx + 2] = p[2]; // B
-                    
-                    rgba_buf[dst_idx + 3] = if idx == 0 { 0 } else { 255 }; 
+
+                    rgba_buf[dst_idx + 3] = if idx == 0 { 0 } else { 255 };
                 }
             }
         }

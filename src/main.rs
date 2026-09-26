@@ -1,16 +1,16 @@
-mod camera;
 mod assets;
-mod terrain;
+mod camera;
 mod interaction;
+mod terrain;
 
+use assets::GscAssetsPlugin;
+use bevy::asset::{
+    AssetApp, AssetPlugin,
+    io::{AssetSourceBuilder, AssetSourceId, file::FileAssetReader},
+};
 use bevy::prelude::*;
 use camera::CameraPlugin;
-use assets::GscAssetsPlugin;
 use interaction::InteractionPlugin;
-use bevy::asset::{
-    io::{file::FileAssetReader, AssetSourceBuilder, AssetSourceId},
-    AssetApp, AssetPlugin,
-};
 use std::path::PathBuf;
 
 fn main() {

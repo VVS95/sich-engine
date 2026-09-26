@@ -1,9 +1,11 @@
 pub mod grid;
 pub mod material; // Підключаємо твій новий файл
+pub mod splatmap;
 
 use bevy::prelude::*;
 use grid::TerrainGrid;
-use material::{TerrainSplatMaterial, TerrainMaterialPlugin};
+use material::{TerrainMaterialPlugin, TerrainSplatMaterial};
+use splatmap::{SPLATMAP_RESOLUTION, TerrainSplatmap};
 
 pub struct TerrainPlugin;
 
@@ -19,28 +21,24 @@ fn spawn_terrain(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut images: ResMut<Assets<Image>>,
     // Змінюємо StandardMaterial на наш кастомний!
     mut materials: ResMut<Assets<TerrainSplatMaterial>>,
 ) {
     let texture_handle: Handle<Image> = asset_server.load("gsc://TILES3.BMP");
-    let mut grid = TerrainGrid::new(20, 20, 5);
-    
-    // Малюємо тестову дорогу
-    for i in 0..20 {
-        let index = grid.get_index(i, i);
-        grid.tiles[index] = 20; 
-        if i < 19 {
-            let index_right = grid.get_index(i + 1, i);
-            grid.tiles[index_right] = 20;
-        }
-    }
+    let splatmap = TerrainSplatmap::new(&mut images, UVec2::splat(SPLATMAP_RESOLUTION));
+    let splatmap_handle = splatmap.handle.clone();
+    commands.insert_resource(splatmap);
+    let grid = TerrainGrid::new(20, 20, 5);
 
     let mesh = grid.generate_mesh();
 
     // Створюємо наш крутий матеріал
     let material = TerrainSplatMaterial {
         atlas_texture: texture_handle,
+        splatmap_texture: splatmap_handle,
         atlas_size: Vec2::new(4.0, 37.0), // Передаємо розміри атласу
+        tile_indices: UVec4::new(5, 20, 0, 0),
     };
 
     let offset = -((20.0 * grid.tile_size) / 2.0);

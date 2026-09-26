@@ -1,22 +1,9 @@
 use bevy::pbr::{MaterialPipeline, MaterialPipelineKey};
-use bevy::render::mesh::MeshVertexBufferLayoutRef;
-use bevy::render::render_resource::{RenderPipelineDescriptor, SpecializedMeshPipelineError};
 use bevy::prelude::*;
-use bevy::render::mesh::MeshVertexAttribute;
-use bevy::render::render_resource::{AsBindGroup, VertexFormat};
+use bevy::render::mesh::MeshVertexBufferLayoutRef;
+use bevy::render::render_resource::AsBindGroup;
+use bevy::render::render_resource::{RenderPipelineDescriptor, SpecializedMeshPipelineError};
 use bevy::shader::ShaderRef;
-
-// --- CUSTOM VERTEX ATTRIBUTES ---
-
-/// Stores up to 4 texture IDs from the atlas for a single vertex.
-/// E.g., [GrassID, SandID, DirtID, 0]
-pub const ATTRIBUTE_BLEND_INDICES: MeshVertexAttribute =
-    MeshVertexAttribute::new("Vertex_Blend_Indices", 3, VertexFormat::Uint32x4);
-
-/// Stores the blending weights (0.0 to 1.0) for the 4 textures at this vertex.
-/// E.g., [0.5, 0.5, 0.0, 0.0] means 50% Grass, 50% Sand.
-pub const ATTRIBUTE_BLEND_WEIGHTS: MeshVertexAttribute =
-    MeshVertexAttribute::new("Vertex_Blend_Weights", 4, VertexFormat::Float32x4);
 
 // --- MATERIAL STRUCTURE ---
 
@@ -28,9 +15,16 @@ pub struct TerrainSplatMaterial {
     #[sampler(1)]
     pub atlas_texture: Handle<Image>,
 
+    #[texture(3)]
+    #[sampler(4)]
+    pub splatmap_texture: Handle<Image>,
+
     /// Stores atlas grid dimensions (X = columns, Y = rows) to calculate UVs inside the shader.
     #[uniform(2)]
     pub atlas_size: Vec2,
+
+    #[uniform(5)]
+    pub tile_indices: UVec4,
 }
 
 // --- TRAIT IMPLEMENTATION ---
@@ -58,10 +52,9 @@ impl Material for TerrainSplatMaterial {
             Mesh::ATTRIBUTE_POSITION.at_shader_location(0),
             Mesh::ATTRIBUTE_NORMAL.at_shader_location(1),
             Mesh::ATTRIBUTE_UV_0.at_shader_location(2),
-            ATTRIBUTE_BLEND_INDICES.at_shader_location(3),
-            ATTRIBUTE_BLEND_WEIGHTS.at_shader_location(4),
+            Mesh::ATTRIBUTE_UV_1.at_shader_location(3),
         ])?;
-        
+
         descriptor.vertex.buffers = vec![vertex_layout];
         Ok(())
     }

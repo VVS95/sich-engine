@@ -5,7 +5,7 @@ pub struct CameraPlugin;
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_camera)
-           .add_systems(Update, pan_camera);
+            .add_systems(Update, pan_camera);
     }
 }
 
@@ -20,17 +20,16 @@ fn spawn_camera(mut commands: Commands) {
     commands.spawn((
         // 1. У сучасних версіях (Required Components) достатньо просто передати компонент
         Camera3d::default(),
-        
         // 2. Дефолтна 3D перспектива замінюється на ортогональну для ізометрії
         Projection::Orthographic(OrthographicProjection {
             scale: 3.0,
-            scaling_mode: ScalingMode::FixedVertical { viewport_height: 20.0 },
-            ..OrthographicProjection::default_3d() 
+            scaling_mode: ScalingMode::FixedVertical {
+                viewport_height: 20.0,
+            },
+            ..OrthographicProjection::default_3d()
         }),
-        
         // 3. Dir3::Y - правильний сучасний підхід для вектора "Вгору"
         Transform::from_translation(position).looking_at(Vec3::ZERO, Dir3::Y),
-        
         MainCamera,
     ));
 }
@@ -42,7 +41,9 @@ fn pan_camera(
     mut query: Query<&mut Transform, With<MainCamera>>,
 ) {
     // ВАЖЛИВО: Захист від крашу (panic). Замість single_mut() безпечніше використовувати get_single_mut()
-    let Ok(mut transform) = query.single_mut() else { return };
+    let Ok(mut transform) = query.single_mut() else {
+        return;
+    };
 
     let speed = 25.0 * time.delta_secs();
     let mut direction = Vec3::ZERO;

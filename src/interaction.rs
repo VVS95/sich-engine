@@ -1,4 +1,4 @@
-use crate::terrain::grid::TerrainGrid;
+use crate::terrain::{grid::TerrainGrid, splatmap::TerrainSplatmap};
 use bevy::prelude::*;
 
 // --- COMPONENTS & RESOURCES ---
@@ -7,11 +7,15 @@ use bevy::prelude::*;
 #[derive(Resource, Default)]
 pub struct CursorWorldPosition(pub Option<Vec3>);
 
+/// World position from the previous painted frame, used to fill fast mouse paths.
+#[derive(Resource, Default)]
+pub struct PreviousBrushPosition(pub Option<Vec3>);
+
 /// Configuration for the terrain painting tool.
 #[derive(Resource)]
 pub struct TerrainBrush {
     pub radius: f32,
-    pub tile_id: usize,
+    pub layer: usize,
     pub is_active: bool,
 }
 
@@ -19,7 +23,7 @@ impl Default for TerrainBrush {
     fn default() -> Self {
         Self {
             radius: 96.0,
-            tile_id: 20,
+            layer: 1,
             is_active: true,
         }
     }
@@ -32,14 +36,11 @@ pub struct InteractionPlugin;
 impl Plugin for InteractionPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<CursorWorldPosition>()
+            .init_resource::<PreviousBrushPosition>()
             .init_resource::<TerrainBrush>()
             .add_systems(
                 Update,
-                (
-                    update_cursor_world_position,
-                    apply_brush_directly,
-                )
-                    .chain(), // НАЙГОЛОВНІШЕ: Гарантуємо порядок виконання кадрів!
+                (update_cursor_world_position, apply_brush_directly).chain(), // НАЙГОЛОВНІШЕ: Гарантуємо порядок виконання кадрів!
             );
     }
 }
@@ -78,57 +79,103 @@ pub fn update_cursor_world_position(
     cursor_pos.0 = (distance >= 0.0).then_some(ray.origin + direction * distance);
 }
 
-/// Пряма система малювання: читає клік миші, змінює сітку та одразу оновлює меш.
+/// Paints normalized RGBA weights directly into the shared CPU-backed splatmap.
 pub fn apply_brush_directly(
     mouse_input: Res<ButtonInput<MouseButton>>,
     cursor_pos: Res<CursorWorldPosition>,
     brush: Res<TerrainBrush>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut terrain_query: Query<(&GlobalTransform, &mut TerrainGrid, &Mesh3d)>,
+    mut previous_pos: ResMut<PreviousBrushPosition>,
+    splatmap: Res<TerrainSplatmap>,
+    mut images: ResMut<Assets<Image>>,
+    terrain_query: Query<(&GlobalTransform, &TerrainGrid)>,
 ) {
     if !brush.is_active || !mouse_input.pressed(MouseButton::Left) {
+        previous_pos.0 = None;
         return;
     }
 
     let Some(world_pos) = cursor_pos.0 else {
+        previous_pos.0 = None;
         return;
     };
 
-    let radius_squared = brush.radius * brush.radius;
-    let mut grid_modified = false;
+    let start = previous_pos.0.unwrap_or(world_pos);
+    let spacing = (brush.radius * 0.25).max(1.0);
+    let steps = (start.distance(world_pos) / spacing).ceil() as usize;
+    let Some(mut image) = images.get_mut(&splatmap.handle) else {
+        return;
+    };
+    let Some(data) = image.data.as_mut() else {
+        return;
+    };
+    let resolution = splatmap.resolution;
+    let layer = brush.layer.min(3);
 
-    for (terrain_transform, mut grid, _) in &mut terrain_query {
-        let local_pos = terrain_transform
-            .affine()
-            .inverse()
-            .transform_point3(world_pos);
+    for step in 0..=steps {
+        let t = if steps == 0 {
+            1.0
+        } else {
+            step as f32 / steps as f32
+        };
+        let sample_pos = start.lerp(world_pos, t);
 
-        for y in 0..grid.height {
-            for x in 0..grid.width {
-                let center = Vec2::new(
-                    (x as f32 + 0.5) * grid.tile_size,
-                    (y as f32 + 0.5) * grid.tile_size,
-                );
-                let distance = center - Vec2::new(local_pos.x, local_pos.z);
+        for (terrain_transform, grid) in &terrain_query {
+            let local_pos = terrain_transform
+                .affine()
+                .inverse()
+                .transform_point3(sample_pos);
+            let terrain_size = Vec2::new(
+                grid.width as f32 * grid.tile_size,
+                grid.height as f32 * grid.tile_size,
+            );
+            let center_uv = Vec2::new(local_pos.x / terrain_size.x, local_pos.z / terrain_size.y);
+            let pixels_per_world = Vec2::new(
+                resolution.x as f32 / terrain_size.x,
+                resolution.y as f32 / terrain_size.y,
+            );
+            let pixel_radius = brush.radius * pixels_per_world.x.max(pixels_per_world.y);
+            let min_x = ((center_uv.x * resolution.x as f32 - pixel_radius).floor() as i32)
+                .clamp(0, resolution.x as i32 - 1);
+            let max_x = ((center_uv.x * resolution.x as f32 + pixel_radius).ceil() as i32)
+                .clamp(0, resolution.x as i32 - 1);
+            let min_y = ((center_uv.y * resolution.y as f32 - pixel_radius).floor() as i32)
+                .clamp(0, resolution.y as i32 - 1);
+            let max_y = ((center_uv.y * resolution.y as f32 + pixel_radius).ceil() as i32)
+                .clamp(0, resolution.y as i32 - 1);
 
-                if distance.length_squared() <= radius_squared {
-                    let index = grid.get_index(x, y);
-                    if grid.tiles[index] != brush.tile_id {
-                        grid.tiles[index] = brush.tile_id;
-                        grid_modified = true;
+            for y in min_y..=max_y {
+                for x in min_x..=max_x {
+                    let pixel_uv = Vec2::new(
+                        (x as f32 + 0.5) / resolution.x as f32,
+                        (y as f32 + 0.5) / resolution.y as f32,
+                    );
+                    let distance = (pixel_uv - center_uv) * terrain_size;
+                    let distance_length = distance.length();
+                    if distance_length > brush.radius {
+                        continue;
+                    }
+
+                    let strength = 1.0 - (distance_length / brush.radius).clamp(0.0, 1.0);
+                    let offset = ((y as u32 * resolution.x + x as u32) * 4) as usize;
+                    let mut weights = [
+                        data[offset] as f32 / 255.0,
+                        data[offset + 1] as f32 / 255.0,
+                        data[offset + 2] as f32 / 255.0,
+                        data[offset + 3] as f32 / 255.0,
+                    ];
+                    for weight in &mut weights {
+                        *weight *= 1.0 - strength;
+                    }
+                    weights[layer] += strength;
+                    let sum: f32 = weights.iter().sum();
+                    for (channel, weight) in weights.iter().enumerate() {
+                        data[offset + channel] = ((weight / sum) * 255.0).round() as u8;
                     }
                 }
             }
         }
     }
 
-    if grid_modified {
-        info!("Grid modified by brush! Rebuilding mesh...");
-        for (_, grid, mesh3d) in &terrain_query {
-            let new_mesh = grid.generate_mesh();
-            if let Err(err) = meshes.insert(&mesh3d.0, new_mesh) {
-                error!("Failed to update terrain mesh: {err:?}");
-            }
-        }
-    }
+    previous_pos.0 = Some(world_pos);
+
 }
