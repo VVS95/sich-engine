@@ -1,69 +1,54 @@
+pub mod grid;
+pub mod material; // Підключаємо твій новий файл
+
 use bevy::prelude::*;
-use bevy::render::mesh::{Indices, PrimitiveTopology};
-use bevy::asset::RenderAssetUsages;
+use grid::TerrainGrid;
+use material::{TerrainSplatMaterial, TerrainMaterialPlugin};
 
 pub struct TerrainPlugin;
 
 impl Plugin for TerrainPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_test_tile);
+        // Додаємо плагін матеріалу
+        app.add_plugins(TerrainMaterialPlugin);
+        app.add_systems(Startup, spawn_terrain);
     }
 }
 
-fn spawn_test_tile(
+fn spawn_terrain(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    // Змінюємо StandardMaterial на наш кастомний!
+    mut materials: ResMut<Assets<TerrainSplatMaterial>>,
 ) {
-    // Loading the texture from the asset server. Make sure the path is correct and the file exists.
-    let texture_handle: Handle<Image> = asset_server.load("TILES3.GBMP");
+    let texture_handle: Handle<Image> = asset_server.load("gsc://TILES3.BMP");
+    let mut grid = TerrainGrid::new(20, 20, 5);
+    
+    // Малюємо тестову дорогу
+    for i in 0..20 {
+        let index = grid.get_index(i, i);
+        grid.tiles[index] = 20; 
+        if i < 19 {
+            let index_right = grid.get_index(i + 1, i);
+            grid.tiles[index_right] = 20;
+        }
+    }
 
-    // Creating a mesh for a single tile.
-    let mut mesh = Mesh::new(
-        PrimitiveTopology::TriangleList,
-        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
-    );
+    let mesh = grid.generate_mesh();
 
-    // Square vertices coordinates (X, Y, Z). Size 64x64.
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![
-        [0.0, 0.0, 0.0],
-        [64.0, 0.0, 0.0],
-        [64.0, 0.0, 64.0],
-        [0.0, 0.0, 64.0],
-    ]);
-
-    // Normals (where the surface "faces" — upwards along the Y-axis)
-    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, vec![
-        [0.0, 1.0, 0.0],
-        [0.0, 1.0, 0.0],
-        [0.0, 1.0, 0.0],
-        [0.0, 1.0, 0.0],
-    ]);
-
-    // UV mapping (how to apply the texture).
-    // For now, we're applying the entire TILES3 image to a single square for testing.
-    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, vec![
-        [0.0, 0.0],
-        [1.0, 0.0],
-        [1.0, 1.0],
-        [0.0, 1.0],
-    ]);
-
-    // Indices (joining 4 points into 2 triangles)
-    mesh.insert_indices(Indices::U32(vec![0, 2, 1, 0, 3, 2]));
-
-    // Creating a material for the mesh, using the loaded texture.
-    let material = StandardMaterial {
-        base_color_texture: Some(texture_handle),
-        unlit: true,
-        alpha_mode: AlphaMode::Blend,
-        ..default()
+    // Створюємо наш крутий матеріал
+    let material = TerrainSplatMaterial {
+        atlas_texture: texture_handle,
+        atlas_size: Vec2::new(4.0, 37.0), // Передаємо розміри атласу
     };
+
+    let offset = -((20.0 * grid.tile_size) / 2.0);
 
     commands.spawn((
         Mesh3d(meshes.add(mesh)),
         MeshMaterial3d(materials.add(material)),
-        Transform::from_xyz(0.0, 0.0, 0.0),
+        grid,
+        Transform::from_xyz(offset, 0.0, offset),
     ));
 }

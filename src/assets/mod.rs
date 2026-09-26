@@ -31,7 +31,7 @@ impl AssetLoader for GscBmpLoader {
     type Error = GscBmpLoaderError;
 
     fn extensions(&self) -> &[&str] {
-        &["gbmp", "GBMP"]
+        &["bmp", "BMP", "gbmp", "GBMP"]
     }
 
     #[allow(refining_impl_trait)]
@@ -45,10 +45,8 @@ impl AssetLoader for GscBmpLoader {
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).await?;
 
-        let palette_path = "AGEW_1.PAL";
-        
-        let palette_bytes = load_context.read_asset_bytes(palette_path).await?;
-
+        let palette_path = "gsc://AGEW_1.PAL";
+        let palette_bytes = load_context.read_asset_bytes("gsc://AGEW_1.PAL").await?;
         let mut palette = Vec::with_capacity(256);
         for i in 0..256 {
             let base = i * 3;
