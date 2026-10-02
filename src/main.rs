@@ -1,5 +1,6 @@
 mod assets;
 mod camera;
+mod editor_ui;
 mod interaction;
 mod terrain;
 
@@ -10,8 +11,10 @@ use bevy::asset::{
 };
 use bevy::prelude::*;
 use camera::CameraPlugin;
+use editor_ui::EditorUiPlugin;
 use interaction::InteractionPlugin;
 use std::path::PathBuf;
+use bevy_egui::EguiPlugin;
 
 fn main() {
     App::new()
@@ -31,6 +34,8 @@ fn main() {
                     ..default()
                 }),
         )
+        .add_plugins(bevy_egui::EguiPlugin::default())
+        .add_plugins(EditorUiPlugin)
         .add_plugins(CameraPlugin)
         .add_plugins(GscAssetsPlugin)
         .add_plugins(terrain::TerrainPlugin)

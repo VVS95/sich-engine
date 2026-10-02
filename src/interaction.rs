@@ -11,20 +11,31 @@ pub struct CursorWorldPosition(pub Option<Vec3>);
 #[derive(Resource, Default)]
 pub struct PreviousBrushPosition(pub Option<Vec3>);
 
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub enum BrushMode {
+    Paint,
+    Raise,
+    Lower,
+}
+
 /// Configuration for the terrain painting tool.
 #[derive(Resource)]
 pub struct TerrainBrush {
     pub radius: f32,
-    pub layer: usize,
+    pub tile_id: usize,
     pub is_active: bool,
+    pub mode: BrushMode,
+    pub over_ui: bool,
 }
 
 impl Default for TerrainBrush {
     fn default() -> Self {
         Self {
             radius: 96.0,
-            layer: 1,
+            tile_id: 1,
             is_active: true,
+            mode: BrushMode::Paint,
+            over_ui: false,
         }
     }
 }
@@ -89,6 +100,10 @@ pub fn apply_brush_directly(
     mut images: ResMut<Assets<Image>>,
     terrain_query: Query<(&GlobalTransform, &TerrainGrid)>,
 ) {
+    if brush.over_ui {
+        return;
+    }
+
     if !brush.is_active || !mouse_input.pressed(MouseButton::Left) {
         previous_pos.0 = None;
         return;
@@ -109,7 +124,7 @@ pub fn apply_brush_directly(
         return;
     };
     let resolution = splatmap.resolution;
-    let layer = brush.layer.min(3);
+    let layer = brush.tile_id.min(3);
 
     for step in 0..=steps {
         let t = if steps == 0 {
