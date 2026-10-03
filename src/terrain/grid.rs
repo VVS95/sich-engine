@@ -52,10 +52,13 @@ impl TerrainGrid {
 
                 normals.extend_from_slice(&[[0.0, 1.0, 0.0]; 4]);
 
-                uvs.push([0.0, 0.0]);
-                uvs.push([1.0, 0.0]);
-                uvs.push([1.0, 1.0]);
-                uvs.push([0.0, 1.0]);
+                let pad = 0.005;
+                let max_p = 1.0 - pad;
+
+                uvs.push([pad, pad]);
+                uvs.push([max_p, pad]);
+                uvs.push([max_p, max_p]);
+                uvs.push([pad, max_p]);
 
                 let min_uv = [x as f32 / self.width as f32, y as f32 / self.height as f32];
                 let max_uv = [

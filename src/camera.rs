@@ -15,11 +15,12 @@ pub struct MainCamera;
 
 // Create the camera entity.
 fn spawn_camera(mut commands: Commands) {
-    let position = Vec3::new(20.0, 25.0, 20.0);
+    let position = Vec3::new(50.0, 40.82, 50.0);
 
     commands.spawn((
         // 1. У сучасних версіях (Required Components) достатньо просто передати компонент
         Camera3d::default(),
+        Msaa::Off,
         // 2. Дефолтна 3D перспектива замінюється на ортогональну для ізометрії
         Projection::Orthographic(OrthographicProjection {
             scale: 3.0,
