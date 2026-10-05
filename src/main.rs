@@ -10,11 +10,11 @@ use bevy::asset::{
     io::{AssetSourceBuilder, AssetSourceId, file::FileAssetReader},
 };
 use bevy::prelude::*;
+use bevy_egui::EguiPlugin;
 use camera::CameraPlugin;
 use editor_ui::EditorUiPlugin;
 use interaction::InteractionPlugin;
 use std::path::PathBuf;
-use bevy_egui::EguiPlugin;
 
 fn main() {
     App::new()

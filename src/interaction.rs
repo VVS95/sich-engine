@@ -192,5 +192,4 @@ pub fn apply_brush_directly(
     }
 
     previous_pos.0 = Some(world_pos);
-
 }
