@@ -37,8 +37,16 @@ impl Plugin for EditorUiPlugin {
             app.add_plugins(EguiPlugin::default());
         }
 
-        app.add_systems(EguiPrimaryContextPass, draw_ui);
+        app.add_systems(Startup, load_ui_atlas_handle)
+            .add_systems(EguiPrimaryContextPass, draw_ui);
     }
+}
+
+fn load_ui_atlas_handle(
+    mut atlas_config: ResMut<TerrainAtlasConfig>,
+    asset_server: Res<AssetServer>,
+) {
+    atlas_config.handle = asset_server.load("gsc://TILES3.BMP");
 }
 
 fn draw_ui(
