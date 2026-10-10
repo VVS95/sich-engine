@@ -45,9 +45,9 @@ fn atlas_uv(tile_id: u32, local_uv: vec2<f32>) -> vec2<f32> {
         f32(tile_id % columns),
         f32(tile_id / columns),
     );
-    let pad = 0.015; 
-    let padded_uv = clamp(local_uv, vec2<f32>(pad), vec2<f32>(1.0 - pad));
-    return (tile + padded_uv) / vec2<f32>(f32(columns), rows);
+
+    // Більше ніяких відрізаних країв! Текстура ідеально безшовна.
+    return (tile + local_uv) / vec2<f32>(f32(columns), rows);
 }
 
 // НОВА ФУНКЦІЯ: Рахує фінальний колір для одного конкретного пікселя сплетмапи
@@ -75,18 +75,22 @@ fn fragment(input: VertexOutput) -> @location(0) vec4<f32> {
     let dim = vec2<i32>(textureDimensions(indices));
     let f_dim = vec2<f32>(dim);
     
-    // Вираховуємо точні координати для нашої ручної фільтрації
     let pixel_pos = input.uv_1 * f_dim - vec2<f32>(0.5);
     let base_coord = vec2<i32>(floor(pixel_pos));
     let fract_pos = fract(pixel_pos);
     
-    // Отримуємо 4 готові кольори з 4 сусідніх пікселів сплетмапи
-    let color_00 = sample_splat_pixel(base_coord + vec2<i32>(0, 0), dim, input.uv_0);
-    let color_10 = sample_splat_pixel(base_coord + vec2<i32>(1, 0), dim, input.uv_0);
-    let color_01 = sample_splat_pixel(base_coord + vec2<i32>(0, 1), dim, input.uv_0);
-    let color_11 = sample_splat_pixel(base_coord + vec2<i32>(1, 1), dim, input.uv_0);
+    // МАГІЯ ТУТ: Створюємо Глобальні UV
+    // Змінюй tile_scale (наприклад, 64.0, 128.0 або 32.0), щоб зробити
+    // каміння чи траву більшими або меншими на екрані.
+    let tile_scale = 128.0;
+    let global_tiled_uv = fract(input.uv_1 * tile_scale);
+
+    // Передаємо global_tiled_uv у функцію sample_splat_pixel
+    let color_00 = sample_splat_pixel(base_coord + vec2<i32>(0, 0), dim, global_tiled_uv);
+    let color_10 = sample_splat_pixel(base_coord + vec2<i32>(1, 0), dim, global_tiled_uv);
+    let color_01 = sample_splat_pixel(base_coord + vec2<i32>(0, 1), dim, global_tiled_uv);
+    let color_11 = sample_splat_pixel(base_coord + vec2<i32>(1, 1), dim, global_tiled_uv);
     
-    // Математично змішуємо кольори (Білінійна інтерполяція)
     let color_y0 = mix(color_00, color_10, fract_pos.x);
     let color_y1 = mix(color_01, color_11, fract_pos.x);
     return mix(color_y0, color_y1, fract_pos.y);

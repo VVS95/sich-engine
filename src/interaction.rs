@@ -1,5 +1,6 @@
 use crate::terrain::{grid::TerrainGrid, splatmap::TerrainSplatmap};
 use bevy::prelude::*;
+use std::f32::consts::FRAC_PI_2;
 
 // --- COMPONENTS & RESOURCES ---
 
@@ -51,7 +52,12 @@ impl Plugin for InteractionPlugin {
             .init_resource::<TerrainBrush>()
             .add_systems(
                 Update,
-                (update_cursor_world_position, apply_brush_directly).chain(), // НАЙГОЛОВНІШЕ: Гарантуємо порядок виконання кадрів!
+                (
+                    update_cursor_world_position,
+                    apply_brush_directly,
+                    draw_brush_cursor,
+                )
+                    .chain(), // НАЙГОЛОВНІШЕ: Гарантуємо порядок виконання кадрів!
             );
     }
 }
@@ -88,6 +94,31 @@ pub fn update_cursor_world_position(
 
     let distance = -ray.origin.y / direction.y;
     cursor_pos.0 = (distance >= 0.0).then_some(ray.origin + direction * distance);
+}
+
+/// Draws the active brush radius on the terrain plane.
+pub fn draw_brush_cursor(
+    mut gizmos: Gizmos,
+    cursor_pos: Res<CursorWorldPosition>,
+    brush: Res<TerrainBrush>,
+) {
+    if !brush.is_active {
+        return;
+    }
+
+    let Some(pos) = cursor_pos.0 else {
+        return;
+    };
+
+    let isometry = Isometry3d::new(
+        Vec3::new(pos.x, pos.y + 0.1, pos.z),
+        Quat::from_rotation_x(-FRAC_PI_2),
+    );
+    gizmos.circle(
+        isometry,
+        brush.radius,
+        Color::srgba(0.0, 1.0, 1.0, 0.8),
+    );
 }
 
 /// Paints the four-slot index and weight splatmaps directly in the main world.
