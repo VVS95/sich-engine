@@ -45,42 +45,49 @@ fn atlas_uv(tile_id: u32, local_uv: vec2<f32>) -> vec2<f32> {
         f32(tile_id % columns),
         f32(tile_id / columns),
     );
-    
-    let pad = 0.015;
+    let pad = 0.015; 
     let padded_uv = clamp(local_uv, vec2<f32>(pad), vec2<f32>(1.0 - pad));
-    
     return (tile + padded_uv) / vec2<f32>(f32(columns), rows);
 }
 
-fn fragment_noise(position: vec2<f32>) -> f32 {
-    let value = sin(dot(position, vec2<f32>(12.9898, 78.233))) * 43758.5453;
-    return fract(value);
+// НОВА ФУНКЦІЯ: Рахує фінальний колір для одного конкретного пікселя сплетмапи
+fn sample_splat_pixel(
+    coord: vec2<i32>, 
+    dim: vec2<i32>, 
+    local_uv: vec2<f32>
+) -> vec4<f32> {
+    let safe_coord = clamp(coord, vec2<i32>(0), dim - vec2<i32>(1));
+    
+    // Жорстко читаємо і індекси, і ваги! Жодного розсинхрону.
+    let idx = textureLoad(indices, safe_coord, 0);
+    let wgt = textureLoad(weights, safe_coord, 0);
+    
+    let c0 = textureSampleLevel(atlas, atlas_sampler, atlas_uv(idx.x, local_uv), 0.0);
+    let c1 = textureSampleLevel(atlas, atlas_sampler, atlas_uv(idx.y, local_uv), 0.0);
+    let c2 = textureSampleLevel(atlas, atlas_sampler, atlas_uv(idx.z, local_uv), 0.0);
+    let c3 = textureSampleLevel(atlas, atlas_sampler, atlas_uv(idx.w, local_uv), 0.0);
+    
+    return c0 * wgt.x + c1 * wgt.y + c2 * wgt.z + c3 * wgt.w;
 }
 
 @fragment
 fn fragment(input: VertexOutput) -> @location(0) vec4<f32> {
-    let dim = vec2<f32>(textureDimensions(indices));
-    let tex_coord = vec2<i32>(clamp(input.uv_1 * dim, vec2<f32>(0.0), dim - vec2<f32>(1.0)));
+    let dim = vec2<i32>(textureDimensions(indices));
+    let f_dim = vec2<f32>(dim);
     
-    let sampled_indices = textureLoad(indices, tex_coord, 0);
-    let sampled_weights = textureSample(weights, weights_sampler, input.uv_1);
+    // Вираховуємо точні координати для нашої ручної фільтрації
+    let pixel_pos = input.uv_1 * f_dim - vec2<f32>(0.5);
+    let base_coord = vec2<i32>(floor(pixel_pos));
+    let fract_pos = fract(pixel_pos);
     
-    let noise = fragment_noise(input.uv_1 * 2000.0);
+    // Отримуємо 4 готові кольори з 4 сусідніх пікселів сплетмапи
+    let color_00 = sample_splat_pixel(base_coord + vec2<i32>(0, 0), dim, input.uv_0);
+    let color_10 = sample_splat_pixel(base_coord + vec2<i32>(1, 0), dim, input.uv_0);
+    let color_01 = sample_splat_pixel(base_coord + vec2<i32>(0, 1), dim, input.uv_0);
+    let color_11 = sample_splat_pixel(base_coord + vec2<i32>(1, 1), dim, input.uv_0);
     
-    let cumulative_0 = sampled_weights.x;
-    let cumulative_1 = cumulative_0 + sampled_weights.y;
-    let cumulative_2 = cumulative_1 + sampled_weights.z;
-
-    var tile_id = sampled_indices.w; 
-    
-    if noise < cumulative_0 {
-        tile_id = sampled_indices.x; 
-    } else if noise < cumulative_1 {
-        tile_id = sampled_indices.y; 
-    } else if noise < cumulative_2 {
-        tile_id = sampled_indices.z; 
-    }
-
-    let final_uv = atlas_uv(tile_id, input.uv_0);
-    return textureSampleLevel(atlas, atlas_sampler, final_uv, 0.0);
+    // Математично змішуємо кольори (Білінійна інтерполяція)
+    let color_y0 = mix(color_00, color_10, fract_pos.x);
+    let color_y1 = mix(color_01, color_11, fract_pos.x);
+    return mix(color_y0, color_y1, fract_pos.y);
 }
