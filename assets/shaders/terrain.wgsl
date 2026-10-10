@@ -13,16 +13,15 @@ struct VertexInput {
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-    @location(1) splat_uv: vec2<f32>,
+    @location(0) uv_0: vec2<f32>,
+    @location(1) uv_1: vec2<f32>,
 }
 
-@group(#{MATERIAL_BIND_GROUP}) @binding(0) var atlas_texture: texture_2d<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(0) var atlas: texture_2d<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(1) var atlas_sampler: sampler;
-@group(#{MATERIAL_BIND_GROUP}) @binding(2) var<uniform> atlas_size: vec2<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(3) var splatmap_texture: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(4) var splatmap_sampler: sampler;
-@group(#{MATERIAL_BIND_GROUP}) @binding(5) var<uniform> tile_indices: vec4<u32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(2) var indices: texture_2d<u32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(4) var weights: texture_2d<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(5) var weights_sampler: sampler;
 
 @vertex
 fn vertex(input: VertexInput) -> VertexOutput {
@@ -34,46 +33,54 @@ fn vertex(input: VertexInput) -> VertexOutput {
     );
 
     output.position = position_world_to_clip(world_position.xyz);
-    output.uv = input.uv;
-    output.splat_uv = input.splat_uv;
+    output.uv_0 = input.uv;
+    output.uv_1 = input.splat_uv;
     return output;
 }
 
-fn atlas_uv(tile_index: u32, local_uv: vec2<f32>) -> vec2<f32> {
-    let columns = u32(atlas_size.x);
+fn atlas_uv(tile_id: u32, local_uv: vec2<f32>) -> vec2<f32> {
+    let columns = 4u;
+    let rows = 37.0;
     let tile = vec2<f32>(
-        f32(tile_index % columns),
-        f32(tile_index / columns),
+        f32(tile_id % columns),
+        f32(tile_id / columns),
     );
-    return (tile + local_uv) / atlas_size;
+    
+    let pad = 0.015;
+    let padded_uv = clamp(local_uv, vec2<f32>(pad), vec2<f32>(1.0 - pad));
+    
+    return (tile + padded_uv) / vec2<f32>(f32(columns), rows);
+}
+
+fn fragment_noise(position: vec2<f32>) -> f32 {
+    let value = sin(dot(position, vec2<f32>(12.9898, 78.233))) * 43758.5453;
+    return fract(value);
 }
 
 @fragment
 fn fragment(input: VertexOutput) -> @location(0) vec4<f32> {
-    let weights = textureSample(splatmap_texture, splatmap_sampler, input.splat_uv);
-    let color_0 = textureSample(
-        atlas_texture,
-        atlas_sampler,
-        atlas_uv(tile_indices.x, input.uv),
-    );
-    let color_1 = textureSample(
-        atlas_texture,
-        atlas_sampler,
-        atlas_uv(tile_indices.y, input.uv),
-    );
-    let color_2 = textureSample(
-        atlas_texture,
-        atlas_sampler,
-        atlas_uv(tile_indices.z, input.uv),
-    );
-    let color_3 = textureSample(
-        atlas_texture,
-        atlas_sampler,
-        atlas_uv(tile_indices.w, input.uv),
-    );
+    let dim = vec2<f32>(textureDimensions(indices));
+    let tex_coord = vec2<i32>(clamp(input.uv_1 * dim, vec2<f32>(0.0), dim - vec2<f32>(1.0)));
+    
+    let sampled_indices = textureLoad(indices, tex_coord, 0);
+    let sampled_weights = textureSample(weights, weights_sampler, input.uv_1);
+    
+    let noise = fragment_noise(input.uv_1 * 2000.0);
+    
+    let cumulative_0 = sampled_weights.x;
+    let cumulative_1 = cumulative_0 + sampled_weights.y;
+    let cumulative_2 = cumulative_1 + sampled_weights.z;
 
-    return color_0 * weights.x
-        + color_1 * weights.y
-        + color_2 * weights.z
-        + color_3 * weights.w;
+    var tile_id = sampled_indices.w; 
+    
+    if noise < cumulative_0 {
+        tile_id = sampled_indices.x; 
+    } else if noise < cumulative_1 {
+        tile_id = sampled_indices.y; 
+    } else if noise < cumulative_2 {
+        tile_id = sampled_indices.z; 
+    }
+
+    let final_uv = atlas_uv(tile_id, input.uv_0);
+    return textureSampleLevel(atlas, atlas_sampler, final_uv, 0.0);
 }

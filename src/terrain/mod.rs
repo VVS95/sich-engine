@@ -4,7 +4,7 @@ pub mod splatmap;
 
 use bevy::prelude::*;
 use grid::TerrainGrid;
-use material::{TerrainMaterialPlugin, TerrainSplatMaterial};
+use material::{TerrainMaterial, TerrainMaterialPlugin};
 use splatmap::{SPLATMAP_RESOLUTION, TerrainSplatmap};
 
 pub struct TerrainPlugin;
@@ -23,22 +23,22 @@ fn spawn_terrain(
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     // Змінюємо StandardMaterial на наш кастомний!
-    mut materials: ResMut<Assets<TerrainSplatMaterial>>,
+    mut materials: ResMut<Assets<TerrainMaterial>>,
 ) {
     let texture_handle: Handle<Image> = asset_server.load("gsc://TILES3.BMP");
     let splatmap = TerrainSplatmap::new(&mut images, UVec2::splat(SPLATMAP_RESOLUTION));
-    let splatmap_handle = splatmap.handle.clone();
+    let indices_handle = splatmap.indices.clone();
+    let weights_handle = splatmap.weights.clone();
     commands.insert_resource(splatmap);
     let grid = TerrainGrid::new(20, 20, 5);
 
     let mesh = grid.generate_mesh();
 
     // Створюємо наш крутий матеріал
-    let material = TerrainSplatMaterial {
-        atlas_texture: texture_handle,
-        splatmap_texture: splatmap_handle,
-        atlas_size: Vec2::new(4.0, 37.0), // Передаємо розміри атласу
-        tile_indices: UVec4::new(5, 20, 0, 0),
+    let material = TerrainMaterial {
+        atlas: texture_handle,
+        indices: indices_handle,
+        weights: weights_handle,
     };
 
     let offset = -((20.0 * grid.tile_size) / 2.0);

@@ -7,29 +7,25 @@ use bevy::shader::ShaderRef;
 
 // --- MATERIAL STRUCTURE ---
 
-/// Custom material for rendering smooth terrain splatting using a texture atlas.
+/// Custom material for rendering terrain tiles from an atlas using per-pixel splat data.
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
-pub struct TerrainSplatMaterial {
+pub struct TerrainMaterial {
     /// The main texture atlas containing all terrain tiles.
     #[texture(0)]
     #[sampler(1)]
-    pub atlas_texture: Handle<Image>,
+    pub atlas: Handle<Image>,
 
-    #[texture(3)]
-    #[sampler(4)]
-    pub splatmap_texture: Handle<Image>,
+    #[texture(2, sample_type = "u_int")]
+    pub indices: Handle<Image>,
 
-    /// Stores atlas grid dimensions (X = columns, Y = rows) to calculate UVs inside the shader.
-    #[uniform(2)]
-    pub atlas_size: Vec2,
-
-    #[uniform(5)]
-    pub tile_indices: UVec4,
+    #[texture(4)]
+    #[sampler(5)]
+    pub weights: Handle<Image>,
 }
 
 // --- TRAIT IMPLEMENTATION ---
 
-impl Material for TerrainSplatMaterial {
+impl Material for TerrainMaterial {
     fn vertex_shader() -> ShaderRef {
         "shaders/terrain.wgsl".into()
     }
@@ -66,6 +62,6 @@ pub struct TerrainMaterialPlugin;
 
 impl Plugin for TerrainMaterialPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(MaterialPlugin::<TerrainSplatMaterial>::default());
+        app.add_plugins(MaterialPlugin::<TerrainMaterial>::default());
     }
 }
