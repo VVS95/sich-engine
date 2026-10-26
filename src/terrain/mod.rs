@@ -30,7 +30,7 @@ fn spawn_terrain(
     let indices_handle = splatmap.indices.clone();
     let weights_handle = splatmap.weights.clone();
     commands.insert_resource(splatmap);
-    let grid = TerrainGrid::new(20, 20, 5);
+    let grid = TerrainGrid::new(20 * 4, 20 * 4, 5);
 
     let mesh = grid.generate_mesh();
 

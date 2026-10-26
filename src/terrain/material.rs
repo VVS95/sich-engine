@@ -12,7 +12,7 @@ use bevy::shader::ShaderRef;
 pub struct TerrainMaterial {
     /// The main texture atlas containing all terrain tiles.
     #[texture(0)]
-    #[sampler(1)] 
+    #[sampler(1)]
     pub atlas: Handle<Image>,
 
     #[texture(2, sample_type = "u_int")]

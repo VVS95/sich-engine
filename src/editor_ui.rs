@@ -67,6 +67,8 @@ fn draw_ui(
             ui.radio_value(&mut brush.mode, BrushMode::Paint, "Paint");
             ui.radio_value(&mut brush.mode, BrushMode::Raise, "Raise");
             ui.radio_value(&mut brush.mode, BrushMode::Lower, "Lower");
+            ui.radio_value(&mut brush.mode, BrushMode::Smooth, "Smooth");
+            ui.radio_value(&mut brush.mode, BrushMode::Flatten, "Flatten");
         });
 
         ui.add(egui::Slider::new(&mut brush.radius, 5.0..=300.0).text("Radius"));

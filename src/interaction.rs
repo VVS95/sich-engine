@@ -1,4 +1,7 @@
-use crate::terrain::{grid::TerrainGrid, splatmap::TerrainSplatmap};
+use crate::terrain::{
+    grid::{TerrainGrid, update_terrain_mesh},
+    splatmap::TerrainSplatmap,
+};
 use bevy::prelude::*;
 use std::f32::consts::FRAC_PI_2;
 
@@ -17,6 +20,8 @@ pub enum BrushMode {
     Paint,
     Raise,
     Lower,
+    Smooth,
+    Flatten,
 }
 
 /// Configuration for the terrain painting tool.
@@ -27,6 +32,7 @@ pub struct TerrainBrush {
     pub is_active: bool,
     pub mode: BrushMode,
     pub over_ui: bool,
+    pub locked_height: Option<f32>,
 }
 
 impl Default for TerrainBrush {
@@ -37,6 +43,7 @@ impl Default for TerrainBrush {
             is_active: true,
             mode: BrushMode::Paint,
             over_ui: false,
+            locked_height: None,
         }
     }
 }
@@ -54,6 +61,8 @@ impl Plugin for InteractionPlugin {
                 Update,
                 (
                     update_cursor_world_position,
+                    apply_elevation_brush,
+                    update_terrain_mesh,
                     apply_brush_directly,
                     draw_brush_cursor,
                 )
@@ -67,6 +76,7 @@ impl Plugin for InteractionPlugin {
 pub fn update_cursor_world_position(
     window_query: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
+    terrain_query: Query<(&GlobalTransform, &TerrainGrid)>,
     mut cursor_pos: ResMut<CursorWorldPosition>,
 ) {
     let Ok(window) = window_query.single() else {
@@ -92,8 +102,72 @@ pub fn update_cursor_world_position(
         return;
     }
 
-    let distance = -ray.origin.y / direction.y;
-    cursor_pos.0 = (distance >= 0.0).then_some(ray.origin + direction * distance);
+    // 1. НАДІЙНИЙ ФУНДАМЕНТ: Знаходимо перетин з базовою площиною Y=0
+    // Це гарантує, що курсор завжди буде на екрані, навіть якщо ми промахнулися повз пагорб.
+    let distance_to_zero = -ray.origin.y / direction.y;
+    if distance_to_zero < 0.0 {
+        cursor_pos.0 = None;
+        return;
+    }
+    let flat_hit = ray.origin + direction * distance_to_zero;
+    let mut final_hit = flat_hit;
+
+    // 2. ПЕРЕВІРКА ПАГОРБІВ: Шукаємо, чи не вдарився промінь у височину раніше
+    for (terrain_transform, grid) in &terrain_query {
+        let inverse = terrain_transform.affine().inverse();
+        let local_origin = inverse.transform_point3(ray.origin);
+        let local_direction = inverse.transform_vector3(direction).normalize_or_zero();
+
+        if local_direction == Vec3::ZERO {
+            continue;
+        }
+
+        // Рахуємо дистанцію до Y=0 в локальних координатах сітки
+        let max_local_dist = (inverse.transform_point3(flat_hit) - local_origin).length();
+
+        let mut distance = 0.0;
+        let step = 2.0; // Крок перевірки (точність курсора на схилах)
+
+        while distance <= max_local_dist {
+            let point = local_origin + local_direction * distance;
+
+            // Перевіряємо, чи промінь зараз знаходиться над сіткою ландшафту
+            if point.x >= 0.0
+                && point.z >= 0.0
+                && point.x <= grid.width as f32 * grid.tile_size
+                && point.z <= grid.height as f32 * grid.tile_size
+            {
+                let x = (point.x / grid.tile_size).floor() as usize;
+                let y = (point.z / grid.tile_size).floor() as usize;
+                let x0 = x.min(grid.width - 1);
+                let y0 = y.min(grid.height - 1);
+
+                let tx = (point.x / grid.tile_size - x0 as f32).clamp(0.0, 1.0);
+                let ty = (point.z / grid.tile_size - y0 as f32).clamp(0.0, 1.0);
+
+                let row_stride = grid.width + 1;
+                let top_left = grid.heights[y0 * row_stride + x0];
+                let top_right = grid.heights[y0 * row_stride + x0 + 1];
+                let bottom_left = grid.heights[(y0 + 1) * row_stride + x0];
+                let bottom_right = grid.heights[(y0 + 1) * row_stride + x0 + 1];
+
+                // Білінійна інтерполяція для визначення точної висоти в цій точці
+                let top = top_left.lerp(top_right, tx);
+                let bottom = bottom_left.lerp(bottom_right, tx);
+                let height = top.lerp(bottom, ty);
+
+                // Якщо промінь "занурився" під землю - ми знайшли точку на пагорбі!
+                if point.y <= height {
+                    let local_hit = local_origin + local_direction * distance;
+                    final_hit = terrain_transform.transform_point(local_hit);
+                    break;
+                }
+            }
+            distance += step;
+        }
+    }
+
+    cursor_pos.0 = Some(final_hit);
 }
 
 /// Draws the active brush radius on the terrain plane.
@@ -114,11 +188,7 @@ pub fn draw_brush_cursor(
         Vec3::new(pos.x, pos.y + 0.1, pos.z),
         Quat::from_rotation_x(-FRAC_PI_2),
     );
-    gizmos.circle(
-        isometry,
-        brush.radius,
-        Color::srgba(0.0, 1.0, 1.0, 0.8),
-    );
+    gizmos.circle(isometry, brush.radius, Color::srgba(0.0, 1.0, 1.0, 0.8));
 }
 
 /// Paints the four-slot index and weight splatmaps directly in the main world.
@@ -131,6 +201,10 @@ pub fn apply_brush_directly(
     mut images: ResMut<Assets<Image>>,
     terrain_query: Query<(&GlobalTransform, &TerrainGrid)>,
 ) {
+    if brush.mode != BrushMode::Paint {
+        return;
+    }
+
     if brush.over_ui {
         return;
     }
@@ -244,6 +318,125 @@ pub fn apply_brush_directly(
     }
 
     previous_pos.0 = Some(world_pos);
+}
+
+pub fn apply_elevation_brush(
+    mouse_input: Res<ButtonInput<MouseButton>>,
+    cursor_pos: Res<CursorWorldPosition>,
+    mut brush: ResMut<TerrainBrush>,
+    time: Res<Time>,
+    mut terrain_query: Query<(&GlobalTransform, &mut TerrainGrid)>,
+) {
+    if mouse_input.just_released(MouseButton::Left) {
+        brush.locked_height = None;
+    }
+
+    if brush.mode == BrushMode::Paint
+        || brush.over_ui
+        || !brush.is_active
+        || !mouse_input.pressed(MouseButton::Left)
+    {
+        return;
+    }
+
+    let Some(world_pos) = cursor_pos.0 else {
+        return;
+    };
+
+    let delta_time = time.delta_secs();
+
+    for (terrain_transform, mut grid) in &mut terrain_query {
+        let local_cursor = terrain_transform
+            .affine()
+            .inverse()
+            .transform_point3(world_pos);
+        let row_stride = grid.width + 1;
+
+        let min_x = ((local_cursor.x - brush.radius) / grid.tile_size).floor() as isize;
+        let max_x = ((local_cursor.x + brush.radius) / grid.tile_size).ceil() as isize;
+        let min_y = ((local_cursor.z - brush.radius) / grid.tile_size).floor() as isize;
+        let max_y = ((local_cursor.z + brush.radius) / grid.tile_size).ceil() as isize;
+
+        let start_x = min_x.max(0) as usize;
+        let end_x = (max_x as usize).min(grid.width);
+        let start_y = min_y.max(0) as usize;
+        let end_y = (max_y as usize).min(grid.height);
+
+        let center_x = (local_cursor.x / grid.tile_size)
+            .round()
+            .clamp(0.0, grid.width as f32) as usize;
+        let center_y = (local_cursor.z / grid.tile_size)
+            .round()
+            .clamp(0.0, grid.height as f32) as usize;
+        let current_center_height = grid.heights[center_y * row_stride + center_x];
+
+        if mouse_input.just_pressed(MouseButton::Left) || brush.locked_height.is_none() {
+            brush.locked_height = Some(current_center_height);
+        }
+        let flatten_target = brush.locked_height.unwrap();
+
+        let average_height = if brush.mode == BrushMode::Smooth {
+            let mut height_sum = 0.0;
+            let mut vertex_count = 0;
+
+            for y in start_y..=end_y {
+                for x in start_x..=end_x {
+                    let vertex_position =
+                        Vec2::new(x as f32 * grid.tile_size, y as f32 * grid.tile_size);
+                    if vertex_position.distance(local_cursor.xz()) < brush.radius {
+                        height_sum += grid.heights[y * row_stride + x];
+                        vertex_count += 1;
+                    }
+                }
+            }
+
+            if vertex_count == 0 {
+                current_center_height
+            } else {
+                height_sum / vertex_count as f32
+            }
+        } else {
+            0.0
+        };
+
+        let mut grid_modified = false;
+        for y in start_y..=end_y {
+            for x in start_x..=end_x {
+                let vertex_position =
+                    Vec2::new(x as f32 * grid.tile_size, y as f32 * grid.tile_size);
+                let distance = vertex_position.distance(local_cursor.xz());
+
+                if distance < brush.radius {
+                    let normalized_dist = (distance / brush.radius).clamp(0.0, 1.0);
+                    let falloff = (std::f32::consts::PI * normalized_dist).cos() * 0.5 + 0.5;
+                    let index = y * row_stride + x;
+
+                    match brush.mode {
+                        BrushMode::Raise => {
+                            grid.heights[index] += 50.0 * falloff * delta_time;
+                        }
+                        BrushMode::Lower => {
+                            grid.heights[index] -= 50.0 * falloff * delta_time;
+                        }
+                        BrushMode::Flatten => {
+                            grid.heights[index] += (flatten_target - grid.heights[index])
+                                * (falloff * 10.0 * delta_time).clamp(0.0, 1.0);
+                        }
+                        BrushMode::Smooth => {
+                            grid.heights[index] += (average_height - grid.heights[index])
+                                * (falloff * 5.0 * delta_time).clamp(0.0, 1.0);
+                        }
+                        BrushMode::Paint => return,
+                    }
+                    grid_modified = true;
+                }
+            }
+        }
+
+        if grid_modified {
+            grid.set_changed();
+        }
+    }
 }
 
 fn paint_splat_pixel(

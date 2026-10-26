@@ -39,9 +39,9 @@ fn spawn_camera(mut commands: Commands) {
             scaling_mode: ScalingMode::FixedVertical {
                 viewport_height: 20.0,
             },
-            // ГОЛОВНЕ ВИПРАВЛЕННЯ: Розширюємо площини відсікання, 
+            // ГОЛОВНЕ ВИПРАВЛЕННЯ: Розширюємо площини відсікання,
             // щоб камера захоплювала ландшафт при будь-якому зумі
-            near: -10000.0, 
+            near: -10000.0,
             far: 10000.0,
             ..OrthographicProjection::default_3d()
         }),

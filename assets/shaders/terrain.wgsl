@@ -15,6 +15,8 @@ struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) uv_0: vec2<f32>,
     @location(1) uv_1: vec2<f32>,
+    @location(2) world_normal: vec3<f32>,
+    @location(3) world_pos: vec3<f32>,
 }
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var atlas: texture_2d<f32>;
@@ -35,6 +37,8 @@ fn vertex(input: VertexInput) -> VertexOutput {
     output.position = position_world_to_clip(world_position.xyz);
     output.uv_0 = input.uv;
     output.uv_1 = input.splat_uv;
+    output.world_pos = world_position.xyz;
+    output.world_normal = mesh_functions::mesh_normal_local_to_world(input.normal, input.instance_index);
     return output;
 }
 
@@ -46,27 +50,23 @@ fn atlas_uv(tile_id: u32, local_uv: vec2<f32>) -> vec2<f32> {
         f32(tile_id / columns),
     );
 
-    // Більше ніяких відрізаних країв! Текстура ідеально безшовна.
     return (tile + local_uv) / vec2<f32>(f32(columns), rows);
 }
 
-// НОВА ФУНКЦІЯ: Рахує фінальний колір для одного конкретного пікселя сплетмапи
 fn sample_splat_pixel(
-    coord: vec2<i32>, 
-    dim: vec2<i32>, 
-    local_uv: vec2<f32>
+    coord: vec2<i32>,
+    dim: vec2<i32>,
+    local_uv: vec2<f32>,
 ) -> vec4<f32> {
     let safe_coord = clamp(coord, vec2<i32>(0), dim - vec2<i32>(1));
-    
-    // Жорстко читаємо і індекси, і ваги! Жодного розсинхрону.
     let idx = textureLoad(indices, safe_coord, 0);
     let wgt = textureLoad(weights, safe_coord, 0);
-    
+
     let c0 = textureSampleLevel(atlas, atlas_sampler, atlas_uv(idx.x, local_uv), 0.0);
     let c1 = textureSampleLevel(atlas, atlas_sampler, atlas_uv(idx.y, local_uv), 0.0);
     let c2 = textureSampleLevel(atlas, atlas_sampler, atlas_uv(idx.z, local_uv), 0.0);
     let c3 = textureSampleLevel(atlas, atlas_sampler, atlas_uv(idx.w, local_uv), 0.0);
-    
+
     return c0 * wgt.x + c1 * wgt.y + c2 * wgt.z + c3 * wgt.w;
 }
 
@@ -74,24 +74,29 @@ fn sample_splat_pixel(
 fn fragment(input: VertexOutput) -> @location(0) vec4<f32> {
     let dim = vec2<i32>(textureDimensions(indices));
     let f_dim = vec2<f32>(dim);
-    
+
     let pixel_pos = input.uv_1 * f_dim - vec2<f32>(0.5);
     let base_coord = vec2<i32>(floor(pixel_pos));
     let fract_pos = fract(pixel_pos);
-    
-    // МАГІЯ ТУТ: Створюємо Глобальні UV
-    // Змінюй tile_scale (наприклад, 64.0, 128.0 або 32.0), щоб зробити
-    // каміння чи траву більшими або меншими на екрані.
-    let tile_scale = 128.0;
-    let global_tiled_uv = fract(input.uv_1 * tile_scale);
 
-    // Передаємо global_tiled_uv у функцію sample_splat_pixel
-    let color_00 = sample_splat_pixel(base_coord + vec2<i32>(0, 0), dim, global_tiled_uv);
-    let color_10 = sample_splat_pixel(base_coord + vec2<i32>(1, 0), dim, global_tiled_uv);
-    let color_01 = sample_splat_pixel(base_coord + vec2<i32>(0, 1), dim, global_tiled_uv);
-    let color_11 = sample_splat_pixel(base_coord + vec2<i32>(1, 1), dim, global_tiled_uv);
-    
+    let texture_scale = 128.0;
+    let global_uv = fract(input.world_pos.xz / texture_scale);
+
+    let color_00 = sample_splat_pixel(base_coord + vec2<i32>(0, 0), dim, global_uv);
+    let color_10 = sample_splat_pixel(base_coord + vec2<i32>(1, 0), dim, global_uv);
+    let color_01 = sample_splat_pixel(base_coord + vec2<i32>(0, 1), dim, global_uv);
+    let color_11 = sample_splat_pixel(base_coord + vec2<i32>(1, 1), dim, global_uv);
+
     let color_y0 = mix(color_00, color_10, fract_pos.x);
     let color_y1 = mix(color_01, color_11, fract_pos.x);
-    return mix(color_y0, color_y1, fract_pos.y);
+    let mixed_color = mix(color_y0, color_y1, fract_pos.y);
+
+    let normal = normalize(input.world_normal);
+    let sun_dir = normalize(vec3<f32>(-0.65, 0.55, -0.52));
+    let flat_dot = sun_dir.y; 
+
+    let slope_light = dot(normal, sun_dir) - flat_dot;
+    let lighting = clamp(1.0 + slope_light * 1.1, 0.30, 1.15);
+
+    return vec4<f32>(mixed_color.rgb * lighting, 1.0);
 }
