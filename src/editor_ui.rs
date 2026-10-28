@@ -1,4 +1,5 @@
 use crate::interaction::{BrushMode, TerrainBrush};
+use crate::terrain::map_io;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, EguiTextureHandle, egui};
 
@@ -53,6 +54,9 @@ fn draw_ui(
     mut contexts: EguiContexts,
     mut brush: ResMut<TerrainBrush>,
     atlas_config: Res<TerrainAtlasConfig>,
+    mut io_state: ResMut<map_io::MapIoState>,
+    mut save_events: MessageWriter<map_io::SaveMapRequest>,
+    mut load_events: MessageWriter<map_io::LoadMapRequest>,
 ) {
     let texture_id = contexts.add_image(EguiTextureHandle::Strong(atlas_config.handle.clone()));
     let ctx = match contexts.ctx_mut() {
@@ -118,6 +122,23 @@ fn draw_ui(
                         });
                 });
         }
+
+        ui.separator();
+        ui.horizontal(|ui| {
+            ui.label("Map File:");
+            ui.text_edit_singleline(&mut io_state.filename);
+        });
+        ui.horizontal(|ui| {
+            if ui.button("Save Map").clicked() {
+                save_events.write(map_io::SaveMapRequest(io_state.filename.clone()));
+                io_state.status = "Saving...".to_string();
+            }
+            if ui.button("Load Map").clicked() {
+                load_events.write(map_io::LoadMapRequest(io_state.filename.clone()));
+                io_state.status = "Loading...".to_string();
+            }
+        });
+        ui.label(egui::RichText::new(&io_state.status).color(egui::Color32::YELLOW));
     });
 
     if let Some(res) = window_response {

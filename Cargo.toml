@@ -8,3 +8,5 @@ image = "0.25.10"
 bevy = "0.19"
 bevy_egui = "0.42"
 thiserror = "2.0.20"
+serde = { version = "1.0", features = ["derive"] }
+bincode = "1.3"

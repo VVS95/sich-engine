@@ -3,8 +3,6 @@ use bevy::image::ImageSampler;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
-pub const SPLATMAP_RESOLUTION: u32 = 256;
-
 #[derive(Resource, Clone)]
 pub struct TerrainSplatmap {
     /// Legacy alias for the weights image until brush painting is updated.

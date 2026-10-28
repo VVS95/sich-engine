@@ -21,7 +21,7 @@ pub struct CameraController {
 }
 
 const MIN_ZOOM: f32 = 1.0;
-const MAX_ZOOM: f32 = 10.0;
+const MAX_ZOOM: f32 = 50.0;
 const ZOOM_STEP: f32 = 0.5;
 const PAN_SPEED: f32 = 25.0;
 const ZOOM_SMOOTHING: f32 = 12.0;
@@ -61,7 +61,6 @@ fn update_camera(
     mut mouse_wheel: MessageReader<MouseWheel>,
     mut query: Query<(&mut Transform, &mut Projection, &mut CameraController), With<MainCamera>>,
 ) {
-    // ВАЖЛИВО: Захист від крашу (panic). Замість single_mut() безпечніше використовувати get_single_mut()
     let Ok((mut transform, mut projection, mut controller)) = query.single_mut() else {
         return;
     };

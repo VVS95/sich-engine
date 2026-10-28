@@ -2,6 +2,8 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 
+pub const HEIGHT_SCALE: f32 = 1000.0;
+
 #[derive(Component)]
 pub struct TerrainGrid {
     pub width: usize,
@@ -9,7 +11,7 @@ pub struct TerrainGrid {
     pub tile_size: f32,
     pub atlas_cols: usize,
     pub atlas_rows: usize,
-    pub heights: Vec<f32>,
+    pub heights: Vec<i32>,
 }
 
 impl TerrainGrid {
@@ -20,8 +22,16 @@ impl TerrainGrid {
             tile_size: 16.0,
             atlas_cols: 4,
             atlas_rows: 37,
-            heights: vec![0.0; (width + 1) * (height + 1)],
+            heights: vec![0i32; (width + 1) * (height + 1)],
         }
+    }
+
+    pub fn height_to_world(h: i32) -> f32 {
+        h as f32 / HEIGHT_SCALE
+    }
+
+    pub fn world_to_height(y: f32) -> i32 {
+        (y * HEIGHT_SCALE).round() as i32
     }
 
     /// Converts 2D tile coordinates to a 1D index.
@@ -36,10 +46,10 @@ impl TerrainGrid {
         let y_up = y.saturating_sub(1);
         let y_down = (y + 1).min(self.height);
 
-        let h_left = self.heights[y * stride + x_left];
-        let h_right = self.heights[y * stride + x_right];
-        let h_up = self.heights[y_up * stride + x];
-        let h_down = self.heights[y_down * stride + x];
+        let h_left = TerrainGrid::height_to_world(self.heights[y * stride + x_left]);
+        let h_right = TerrainGrid::height_to_world(self.heights[y * stride + x_right]);
+        let h_up = TerrainGrid::height_to_world(self.heights[y_up * stride + x]);
+        let h_down = TerrainGrid::height_to_world(self.heights[y_down * stride + x]);
 
         let normal =
             Vec3::new(h_left - h_right, 2.0 * self.tile_size, h_up - h_down).normalize_or_zero();
@@ -60,7 +70,7 @@ impl TerrainGrid {
                 let index = y * (self.width + 1) + x;
                 positions.push([
                     x as f32 * self.tile_size,
-                    self.heights[index],
+                    TerrainGrid::height_to_world(self.heights[index]),
                     y as f32 * self.tile_size,
                 ]);
                 normals.push(self.calculate_normal(x, y));
@@ -120,7 +130,7 @@ pub fn update_terrain_mesh(
         };
 
         for (i, position) in positions.iter_mut().enumerate() {
-            position[1] = grid.heights[i];
+            position[1] = TerrainGrid::height_to_world(grid.heights[i]);
         }
 
         let Some(VertexAttributeValues::Float32x3(normals)) =

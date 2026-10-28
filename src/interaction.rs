@@ -1,5 +1,5 @@
 use crate::terrain::{
-    grid::{TerrainGrid, update_terrain_mesh},
+    grid::{update_terrain_mesh, TerrainGrid},
     splatmap::TerrainSplatmap,
 };
 use bevy::prelude::*;
@@ -146,10 +146,13 @@ pub fn update_cursor_world_position(
                 let ty = (point.z / grid.tile_size - y0 as f32).clamp(0.0, 1.0);
 
                 let row_stride = grid.width + 1;
-                let top_left = grid.heights[y0 * row_stride + x0];
-                let top_right = grid.heights[y0 * row_stride + x0 + 1];
-                let bottom_left = grid.heights[(y0 + 1) * row_stride + x0];
-                let bottom_right = grid.heights[(y0 + 1) * row_stride + x0 + 1];
+                let top_left = TerrainGrid::height_to_world(grid.heights[y0 * row_stride + x0]);
+                let top_right =
+                    TerrainGrid::height_to_world(grid.heights[y0 * row_stride + x0 + 1]);
+                let bottom_left =
+                    TerrainGrid::height_to_world(grid.heights[(y0 + 1) * row_stride + x0]);
+                let bottom_right =
+                    TerrainGrid::height_to_world(grid.heights[(y0 + 1) * row_stride + x0 + 1]);
 
                 // Білінійна інтерполяція для визначення точної висоти в цій точці
                 let top = top_left.lerp(top_right, tx);
@@ -368,10 +371,11 @@ pub fn apply_elevation_brush(
         let center_y = (local_cursor.z / grid.tile_size)
             .round()
             .clamp(0.0, grid.height as f32) as usize;
-        let current_center_height = grid.heights[center_y * row_stride + center_x];
+        let center_height_i32 = grid.heights[center_y * row_stride + center_x];
+        let center_height = TerrainGrid::height_to_world(center_height_i32);
 
         if mouse_input.just_pressed(MouseButton::Left) || brush.locked_height.is_none() {
-            brush.locked_height = Some(current_center_height);
+            brush.locked_height = Some(center_height);
         }
         let flatten_target = brush.locked_height.unwrap();
 
@@ -384,14 +388,15 @@ pub fn apply_elevation_brush(
                     let vertex_position =
                         Vec2::new(x as f32 * grid.tile_size, y as f32 * grid.tile_size);
                     if vertex_position.distance(local_cursor.xz()) < brush.radius {
-                        height_sum += grid.heights[y * row_stride + x];
+                        height_sum +=
+                            TerrainGrid::height_to_world(grid.heights[y * row_stride + x]);
                         vertex_count += 1;
                     }
                 }
             }
 
             if vertex_count == 0 {
-                current_center_height
+                center_height
             } else {
                 height_sum / vertex_count as f32
             }
@@ -410,24 +415,26 @@ pub fn apply_elevation_brush(
                     let normalized_dist = (distance / brush.radius).clamp(0.0, 1.0);
                     let falloff = (std::f32::consts::PI * normalized_dist).cos() * 0.5 + 0.5;
                     let index = y * row_stride + x;
+                    let mut current_h = TerrainGrid::height_to_world(grid.heights[index]);
 
                     match brush.mode {
                         BrushMode::Raise => {
-                            grid.heights[index] += 50.0 * falloff * delta_time;
+                            current_h += 50.0 * falloff * delta_time;
                         }
                         BrushMode::Lower => {
-                            grid.heights[index] -= 50.0 * falloff * delta_time;
+                            current_h -= 50.0 * falloff * delta_time;
                         }
                         BrushMode::Flatten => {
-                            grid.heights[index] += (flatten_target - grid.heights[index])
+                            current_h += (flatten_target - current_h)
                                 * (falloff * 10.0 * delta_time).clamp(0.0, 1.0);
                         }
                         BrushMode::Smooth => {
-                            grid.heights[index] += (average_height - grid.heights[index])
+                            current_h += (average_height - current_h)
                                 * (falloff * 5.0 * delta_time).clamp(0.0, 1.0);
                         }
                         BrushMode::Paint => return,
                     }
+                    grid.heights[index] = TerrainGrid::world_to_height(current_h);
                     grid_modified = true;
                 }
             }
