@@ -1,5 +1,5 @@
-pub mod map_io;
 pub mod grid;
+pub mod map_io;
 pub mod material; // Підключаємо твій новий файл
 pub mod splatmap;
 

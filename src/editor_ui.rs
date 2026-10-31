@@ -1,4 +1,4 @@
-use crate::interaction::{BrushMode, TerrainBrush};
+use crate::interaction::{self, BrushMode, TerrainBrush};
 use crate::terrain::map_io;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, EguiTextureHandle, egui};
@@ -68,6 +68,7 @@ fn draw_ui(
         ui.heading("Brush Settings");
 
         ui.horizontal(|ui| {
+            ui.radio_value(&mut brush.mode, interaction::BrushMode::None, "Select");
             ui.radio_value(&mut brush.mode, BrushMode::Paint, "Paint");
             ui.radio_value(&mut brush.mode, BrushMode::Raise, "Raise");
             ui.radio_value(&mut brush.mode, BrushMode::Lower, "Lower");

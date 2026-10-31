@@ -1,5 +1,5 @@
 use crate::terrain::{
-    grid::{update_terrain_mesh, TerrainGrid},
+    grid::{TerrainGrid, update_terrain_mesh},
     splatmap::TerrainSplatmap,
 };
 use bevy::prelude::*;
@@ -17,6 +17,7 @@ pub struct PreviousBrushPosition(pub Option<Vec3>);
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum BrushMode {
+    None,
     Paint,
     Raise,
     Lower,
@@ -179,7 +180,7 @@ pub fn draw_brush_cursor(
     cursor_pos: Res<CursorWorldPosition>,
     brush: Res<TerrainBrush>,
 ) {
-    if !brush.is_active {
+    if brush.mode == BrushMode::None || !brush.is_active {
         return;
     }
 
@@ -334,7 +335,8 @@ pub fn apply_elevation_brush(
         brush.locked_height = None;
     }
 
-    if brush.mode == BrushMode::Paint
+    if brush.mode == BrushMode::None
+        || brush.mode == BrushMode::Paint
         || brush.over_ui
         || !brush.is_active
         || !mouse_input.pressed(MouseButton::Left)
@@ -432,6 +434,7 @@ pub fn apply_elevation_brush(
                             current_h += (average_height - current_h)
                                 * (falloff * 5.0 * delta_time).clamp(0.0, 1.0);
                         }
+                        BrushMode::None => return,
                         BrushMode::Paint => return,
                     }
                     grid.heights[index] = TerrainGrid::world_to_height(current_h);
