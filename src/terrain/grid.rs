@@ -34,6 +34,35 @@ impl TerrainGrid {
         (y * HEIGHT_SCALE).round() as i32
     }
 
+    pub fn get_height_at_world(&self, world_x: f32, world_z: f32) -> f32 {
+        let max_x = (self.width as f32) * self.tile_size;
+        let max_z = (self.height as f32) * self.tile_size;
+
+        let clamped_x = world_x.clamp(0.0, max_x);
+        let clamped_z = world_z.clamp(0.0, max_z);
+
+        let tx = clamped_x / self.tile_size;
+        let tz = clamped_z / self.tile_size;
+
+        let x0 = (tx.floor() as usize).min(self.width.saturating_sub(1));
+        let z0 = (tz.floor() as usize).min(self.height.saturating_sub(1));
+        let x1 = (x0 + 1).min(self.width);
+        let z1 = (z0 + 1).min(self.height);
+
+        let fx = tx - (x0 as f32);
+        let fz = tz - (z0 as f32);
+
+        let stride = self.width + 1;
+        let h00 = Self::height_to_world(self.heights[z0 * stride + x0]);
+        let h10 = Self::height_to_world(self.heights[z0 * stride + x1]);
+        let h01 = Self::height_to_world(self.heights[z1 * stride + x0]);
+        let h11 = Self::height_to_world(self.heights[z1 * stride + x1]);
+
+        let h0 = h00 * (1.0 - fx) + h10 * fx;
+        let h1 = h01 * (1.0 - fx) + h11 * fx;
+        h0 * (1.0 - fz) + h1 * fz
+    }
+
     /// Converts 2D tile coordinates to a 1D index.
     pub fn get_index(&self, x: usize, y: usize) -> usize {
         y * self.width + x

@@ -1,8 +1,10 @@
 mod assets;
 mod camera;
 mod editor_ui;
+mod events;
 mod interaction;
 mod terrain;
+mod unit;
 
 use assets::GscAssetsPlugin;
 use bevy::asset::{
@@ -38,6 +40,7 @@ fn main() {
         .add_plugins(EditorUiPlugin)
         .add_plugins(CameraPlugin)
         .add_plugins(GscAssetsPlugin)
+        .add_plugins(unit::UnitPlugin)
         .add_plugins(terrain::TerrainPlugin)
         .add_plugins(InteractionPlugin)
         .run();
